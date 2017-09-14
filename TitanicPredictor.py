@@ -6,13 +6,13 @@ from TitanicDataCleaning import *
 
 
 input_features = 2433
-hidden1 = 10
+hidden1 = 20
 hidden2 = 40
-hidden3 = 10
+hidden3 = 20
 hidden4 = 1
 
 learning_rate =.01
-
+beta = .001
 weights = dict(
             w1=tf.Variable(tf.random_normal([input_features, hidden1]),),
             w2=tf.Variable(tf.random_normal([hidden1, hidden2]),),
@@ -27,22 +27,30 @@ biases = dict(
             b4=tf.Variable(tf.zeros([hidden4]))
             )
 
+global_step = tf.Variable(0, trainable=False)
+
+decay_learning_rate = tf.train.exponential_decay(learning_rate, global_step, 100000, 0.96, staircase=True)
+
+
 x = tf.placeholder("float32", [None,input_features])
 
 layer = create_layer(x, weights['w1'], biases['b1'], tf.tanh)
 layer = create_layer(layer, weights['w2'], biases['b2'], tf.tanh)
+layer = tf.nn.dropout(layer, keep_prob=.9)
 layer = create_layer(layer, weights['w3'], biases['b3'], tf.tanh)
 Z4 = create_layer(layer, weights['w4'], biases['b4'])
 
 y = tf.placeholder(dtype="float32",shape=[None, 1])
 
-cost = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(multi_class_labels=y, logits=Z4))
-# cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Z4, labels=y))
-optimizer = tf.train.AdamOptimizer(learning_rate).minimize(cost)
+regularizer = tf.nn.l2_loss(weights['w1']) + tf.nn.l2_loss(weights['w2']) + tf.nn.l2_loss(weights['w3']) + tf.nn.l2_loss(weights['w4'])
+
+# cost = tf.reduce_mean(tf.losses.sigmoid_cross_entropy(multi_class_labels=y, logits=Z4))
+cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Z4, labels=y) + (beta * regularizer))
+optimizer = tf.train.AdamOptimizer(decay_learning_rate).minimize(cost)
 
 with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    for i in range(0, 200):
+    for i in range(0, 400):
 
         _, c = sess.run([optimizer, cost], feed_dict={x: train_feature, y: train_labels})
         print("Iteration " + str(i) + ":  " + str(c))
@@ -56,5 +64,7 @@ with tf.Session() as sess:
     test = sess.run(prediction, feed_dict={x:test_feature})
     frame = pd.DataFrame(test)
     frame.index += 892
-    frame.index.name ="PassengerId"
+    frame.index.name = "PassengerId"
     frame.to_csv("/Users/yazen/Desktop/datasets/Titanic/prediction.csv", header=["Survived"])
+
+
